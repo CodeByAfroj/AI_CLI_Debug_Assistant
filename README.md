@@ -83,26 +83,29 @@ devfix logout
 ```bash
 devfix run <Command> --context
 ```
+**for example : devfix run kubectl get pods --context**
 ---
-  for example : devfix run kubectl get pods --context
+  
 ---
 
 2. Stack Command -> Force stack type
 ```bash
 devfix run <Command> --stack <StackName>
 ```
----
-  for example : devfix run kubectl get pods --stack kubernetes
+**for example : devfix run kubectl get pods --stack kubernetes**
 ---
 
-Model Command -> OpenRouter model override
+---
+  
+3. Model Command -> OpenRouter model override
 
 ```bash
 devfix run <Command> --model <ModelName>
 ```
+ **for example : devfix run kubectl get pods --model openai/gpt-4o-mini**
 ---
-  for example : devfix run kubectl get pods --model openai/gpt-4o-mini
----
+ 
+
 
 
 
