@@ -77,3 +77,19 @@ Logout:
 ```bash
 devfix logout
 ```
+
+scan -> collects context + auto errors:
+```bash
+devfix scan
+```
+
+scan preview -> shows what it found:
+```bash
+devfix scan --preview 
+```
+
+Send scan results to AI:
+```bash
+devfix scan -a 
+```
+
