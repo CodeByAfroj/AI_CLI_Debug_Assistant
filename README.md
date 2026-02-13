@@ -88,7 +88,7 @@ scan preview -> shows what it found:
 devfix scan --preview 
 ```
 
-Send scan results to AI:
+sacn analyze -> Send scan results to AI:
 ```bash
 devfix scan -a 
 ```
