@@ -77,19 +77,32 @@ Logout:
 ```bash
 devfix logout
 ```
-
-scan -> collects context + auto errors:
+---
+### 5) Run a command and auto-capture errors for AI fixing
+1. Context command -> Include project/system context
 ```bash
-devfix scan
+devfix run <Command> --context
 ```
+---
+  for example : devfix run kubectl get pods --context
+---
 
-scan preview -> shows what it found:
+2. Stack Command -> Force stack type
 ```bash
-devfix scan --preview 
+devfix run <Command> --stack <StackName>
 ```
+---
+  for example : devfix run kubectl get pods --stack kubernetes
+---
 
-sacn analyze -> Send scan results to AI:
+Model Command -> OpenRouter model override
+
 ```bash
-devfix scan -a 
+devfix run <Command> --model <ModelName>
 ```
+---
+  for example : devfix run kubectl get pods --model openai/gpt-4o-mini
+---
+
+
 
