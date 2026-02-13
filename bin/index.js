@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 
-import { loginCommand } from "./commands/login.js";
-import { logoutCommand } from "./commands/logout.js";
-import { whoamiCommand } from "./commands/whoami.js";
-import { analyzeCommand } from "./commands/analyze.js";
+import { loginCommand } from "../src/commands/login.js";
+import { logoutCommand } from "../src/commands/logout.js";
+import { whoamiCommand } from "../src/commands/whoami.js";
+import { analyzeCommand } from "../src/commands/analyze.js";
+import { scanCommand } from "../src/commands/scan.js";
+
 
 const program = new Command();
 
@@ -34,6 +36,20 @@ program
       stack: options.stack,
       model: options.model,
       useContext: options.context, 
+    });
+  });
+
+program
+  .command("scan")
+  .description("Scan your system/project for recent errors and context")
+  .option("-p, --preview", "Preview collected data only (recommended)")
+  .option("-a, --analyze", "Send scan results to AI")
+  .option("-m, --model <model>", "OpenRouter model override")
+  .action((options) => {
+    scanCommand({
+      preview: options.preview,
+      analyze: options.analyze,
+      model: options.model,
     });
   });
 
