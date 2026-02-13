@@ -4,6 +4,9 @@ import inquirer from "inquirer";
 import ora from "ora";
 import { spawn } from "child_process";
 
+import { marked } from "marked";
+import TerminalRenderer from "marked-terminal";
+
 import { readConfig } from "../utils/config.js";
 import { isSessionValid } from "../utils/session.js";
 import { decrypt } from "../utils/cryptoStore.js";
@@ -13,22 +16,19 @@ import { detectStack } from "../utils/detectStack.js";
 import { buildPrompt } from "../utils/prompt.js";
 import { askAI } from "../utils/ai.js";
 
-function headerBox({ fullCmd, contextOn }) {
-  return boxen(
-    `${chalk.bold.cyan("DevFix Run")}\n` +
-      `${chalk.gray("────────────────────────")}\n` +
-      `${chalk.white("Command:")} ${chalk.yellow(fullCmd)}\n` +
-      `${chalk.white("Context:")} ${contextOn ? chalk.green("ON") : chalk.red("OFF")}`,
-    { padding: 1, borderStyle: "round" }
-  );
-}
+// Markdown renderer
+marked.setOptions({
+  renderer: new TerminalRenderer(),
+});
 
+// Extract first code block for "Main Fix"
 function extractFirstCodeBlock(md) {
   const match = md.match(/```(?:bash|sh)?\n([\s\S]*?)```/);
   if (!match) return null;
   return match[1].trim();
 }
 
+// Clean AI output (remove ugly markdown indent)
 function cleanAIText(text) {
   return (text || "")
     .replace(/\n {4,}/g, "\n")
@@ -61,14 +61,22 @@ export async function runCommand(cmdArgs, options) {
 
   let handled = false;
 
-  console.log("\n" + headerBox({ fullCmd, contextOn: !!options.context }) + "\n");
+  // ✅ Keep your old UI header style
+  console.log(
+    boxen(
+      `${chalk.bold.cyan("▶ DevFix Run")}\n\n${chalk.white("Command:")} ${chalk.yellow(fullCmd)}\n${
+        options.context ? chalk.green("Context: ON") : chalk.red("Context: OFF")
+      }`,
+      { padding: 1, borderStyle: "round" }
+    )
+  );
 
+  // No shell=true
   const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
 
   let stdout = "";
   let stderr = "";
 
-  // ✅ Still show live output (like normal terminal)
   child.stdout.on("data", (d) => {
     const text = d.toString();
     stdout += text;
@@ -81,15 +89,15 @@ export async function runCommand(cmdArgs, options) {
     process.stderr.write(text);
   });
 
-  // ✅ Command not found
+  // ✅ Handle "command not found" cleanly (no duplicate close handler)
   child.on("error", async (err) => {
     if (handled) return;
     handled = true;
 
     const msg =
       err.code === "ENOENT"
-        ? `Command not found: ${command}`
-        : `Failed to run: ${fullCmd}\n${err.message}`;
+        ? `Command not found: ${command}\n\nTip: Example: devfix run kubectl get pods`
+        : `Failed to run command:\n${err.message}`;
 
     console.log(chalk.red(`\n❌ ${msg}\n`));
 
@@ -97,25 +105,18 @@ export async function runCommand(cmdArgs, options) {
       {
         name: "confirm",
         type: "confirm",
-        message: "Send to DevFix AI?",
+        message: "Send this error to DevFix AI for a fix?",
         default: true,
       },
     ]);
 
     if (!confirm) {
-      console.log(chalk.yellow("\n❌ Not sent.\n"));
+      console.log(chalk.yellow("\n❌ Not sent to AI.\n"));
       process.exit(1);
     }
 
-    const errorBundle = `
-Command: ${fullCmd}
-
-Error:
-${msg}
-`.trim();
-
     const context = options.context ? collectContext() : {};
-    const stack = options.stack || detectStack(errorBundle);
+    const stack = options.stack || detectStack(msg);
     const usedModel = options.model || "openai/gpt-4o-mini";
 
     const spinner = ora("DevFix AI is analyzing...").start();
@@ -123,7 +124,7 @@ ${msg}
     try {
       const prompt = buildPrompt({
         stack,
-        input: errorBundle,
+        input: `Command: ${fullCmd}\n\n${msg}`,
         context,
       });
 
@@ -133,28 +134,30 @@ ${msg}
         prompt,
       });
 
-      spinner.succeed("Done");
+      spinner.succeed("Analysis complete");
 
       const answer = cleanAIText(answerRaw);
-      const mainCmd = extractFirstCodeBlock(answer);
+      const mainFix = extractFirstCodeBlock(answer);
 
-      if (mainCmd) {
+      // ✅ Main Fix box (easy copy)
+      if (mainFix) {
         console.log(
-          "\n" +
-            boxen(`${chalk.bold.green("Main Fix (copy-paste)")}\n\n${chalk.cyan(mainCmd)}`, {
-              padding: 1,
-              borderStyle: "round",
-            }) +
-            "\n"
+          boxen(chalk.bold.green("🚀 Main Fix (copy-paste)") + `\n\n${chalk.cyan(mainFix)}`, {
+            padding: 1,
+            borderStyle: "round",
+          })
         );
       }
 
+      // ✅ Explanation box
       console.log(
-        boxen(`${chalk.bold.white("Explanation")}\n\n${answer}`, {
+        boxen(chalk.bold.white("🧠 Explanation") + `\n\n${marked(answer)}`, {
           padding: 1,
           borderStyle: "round",
-        }) + "\n"
+        })
       );
+
+      console.log();
     } catch (e) {
       spinner.fail("AI request failed");
       console.log(chalk.red("\n❌ Error:\n"));
@@ -165,7 +168,7 @@ ${msg}
     process.exit(1);
   });
 
-  // ✅ Normal close
+  // ✅ Handle normal close
   child.on("close", async (code) => {
     if (handled) return;
     handled = true;
@@ -175,22 +178,24 @@ ${msg}
       return;
     }
 
-    // ⚠️ We do NOT print captured error again (already shown above)
     const errorText = (stderr || stdout || "").trim();
 
     console.log(chalk.red(`\n❌ Command failed (exit code: ${code}).\n`));
+
+    // ❌ No Captured Error box (no repetition)
+    // because error already printed above by kubectl/npm/etc.
 
     const { confirm } = await inquirer.prompt([
       {
         name: "confirm",
         type: "confirm",
-        message: "Send this error to DevFix AI?",
+        message: "Send this error to DevFix AI for a fix?",
         default: true,
       },
     ]);
 
     if (!confirm) {
-      console.log(chalk.yellow("\n❌ Not sent.\n"));
+      console.log(chalk.yellow("\n❌ Not sent to AI.\n"));
       return;
     }
 
@@ -198,17 +203,20 @@ ${msg}
     const stack = options.stack || detectStack(errorText);
     const usedModel = options.model || "openai/gpt-4o-mini";
 
-    const errorBundle = `
-Command: ${fullCmd}
-Exit Code: ${code}
+    const spinner = ora("DevFix AI is analyzing...").start();
+
+    try {
+      const errorBundle = `
+Command:
+${fullCmd}
+
+Exit Code:
+${code}
 
 Error Output:
 ${errorText}
 `.trim();
 
-    const spinner = ora("DevFix AI is analyzing...").start();
-
-    try {
       const prompt = buildPrompt({
         stack,
         input: errorBundle,
@@ -221,32 +229,35 @@ ${errorText}
         prompt,
       });
 
-      spinner.succeed("Done");
+      spinner.succeed("Analysis complete");
 
       const answer = cleanAIText(answerRaw);
-      const mainCmd = extractFirstCodeBlock(answer);
+      const mainFix = extractFirstCodeBlock(answer);
 
-      if (mainCmd) {
+      // ✅ Main Fix box
+      if (mainFix) {
         console.log(
-          "\n" +
-            boxen(`${chalk.bold.green("Main Fix (copy-paste)")}\n\n${chalk.cyan(mainCmd)}`, {
-              padding: 1,
-              borderStyle: "round",
-            }) +
-            "\n"
+          boxen(chalk.bold.green("🚀 Main Fix (copy-paste)") + `\n\n${chalk.cyan(mainFix)}`, {
+            padding: 1,
+            borderStyle: "round",
+          })
         );
       }
 
+      // ✅ Explanation box
       console.log(
-        boxen(`${chalk.bold.white("Explanation")}\n\n${answer}`, {
+        boxen(chalk.bold.white("🧠 Explanation") + `\n\n${marked(answer)}`, {
           padding: 1,
           borderStyle: "round",
-        }) + "\n"
+        })
       );
-    } catch (e) {
+
+      console.log();
+    } catch (err) {
       spinner.fail("AI request failed");
+
       console.log(chalk.red("\n❌ Error:\n"));
-      console.log(e?.response?.data || e.message);
+      console.log(err?.response?.data || err.message);
       console.log();
     }
   });
