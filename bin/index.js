@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { createRequire } from "module";
 
 import { loginCommand } from "../src/commands/login.js";
 import { logoutCommand } from "../src/commands/logout.js";
@@ -7,13 +8,15 @@ import { whoamiCommand } from "../src/commands/whoami.js";
 import { analyzeCommand } from "../src/commands/analyze.js";
 import { runCommand } from "../src/utils/run.js";
 
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json");
 
 const program = new Command();
 
 program
   .name("devfix")
   .description("DevFix CLI - AI tool to solve errors and bugs")
-  .version("1.0.0");
+  .version(pkg.version);
 
 program.command("login").description("Login and save session for 7 days").action(loginCommand);
 
@@ -35,7 +38,7 @@ program
       file: options.file,
       stack: options.stack,
       model: options.model,
-      useContext: options.context, 
+      useContext: options.context,
     });
   });
 
@@ -53,6 +56,5 @@ program
       model: options.model,
     });
   });
-
 
 program.parse(process.argv);
