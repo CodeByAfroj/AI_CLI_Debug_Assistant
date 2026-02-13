@@ -10,7 +10,6 @@ import TerminalRenderer from "marked-terminal";
 import { readConfig } from "../utils/config.js";
 import { isSessionValid } from "../utils/session.js";
 import { decrypt } from "../utils/cryptoStore.js";
-import { collectAutoError } from "../utils/autoError.js";
 
 import { collectContext } from "../utils/context.js";
 import { detectStack } from "../utils/detectStack.js";
@@ -45,18 +44,10 @@ export async function analyzeCommand({ text, file, stack, model, useContext }) {
     input = fs.readFileSync(file, "utf-8");
   }
 
-  // If no text + no file, try auto error collection
-if ((!input || input.trim().length < 2) && useContext) {
-  const autoErr = collectAutoError();
-  if (autoErr) input = autoErr;
-}
-
-if (!input || input.trim().length < 2) {
-  console.log(chalk.red("\n❌ Please provide error text or use --file\n"));
-  console.log(chalk.gray("Tip: You can also run: devfix analyze --context"));
-  process.exit(1);
-}
-
+  if (!input || input.trim().length < 2) {
+    console.log(chalk.red("\n❌ Please provide error text or use --file\n"));
+    process.exit(1);
+  }
 
   const detected = stack || detectStack(input);
   const usedModel = model || "openai/gpt-4o-mini";

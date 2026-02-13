@@ -1,53 +1,76 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execSync } from "child_process";
 
-function safeExec(cmd) {
+function getLatestFile(dir, ext = ".log") {
   try {
-    return execSync(cmd, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    if (!fs.existsSync(dir)) return null;
+
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(ext))
+      .map((f) => ({
+        name: f,
+        full: path.join(dir, f),
+        time: fs.statSync(path.join(dir, f)).mtimeMs,
+      }))
+      .sort((a, b) => b.time - a.time);
+
+    return files.length ? files[0].full : null;
   } catch {
     return null;
   }
 }
 
-export function collectAutoError() {
-  const cwd = process.cwd();
+function extractNpmError(logText) {
+  const lines = logText.split("\n");
 
-  // 1) npm debug log (most common)
-  const npmLog = path.join(os.homedir(), ".npm", "_logs");
-  if (fs.existsSync(npmLog)) {
-    const files = fs
-      .readdirSync(npmLog)
-      .filter((f) => f.endsWith(".log"))
-      .map((f) => ({
-        name: f,
-        full: path.join(npmLog, f),
-        time: fs.statSync(path.join(npmLog, f)).mtimeMs,
-      }))
-      .sort((a, b) => b.time - a.time);
+  // Most npm errors appear in these patterns
+  const keywords = ["npm ERR!", "error", "ERR_", "EACCES", "ENOTFOUND", "ECONNRESET"];
 
-    if (files.length > 0) {
-      const latest = files[0].full;
-      const content = fs.readFileSync(latest, "utf-8").slice(-6000);
-      return `📌 Auto-collected npm debug log:\nFile: ${latest}\n\n${content}`;
+  // Find first error-like line
+  let startIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const lower = lines[i].toLowerCase();
+    if (keywords.some((k) => lower.includes(k.toLowerCase()))) {
+      startIndex = i;
+      break;
     }
   }
 
-  // 2) Git status (sometimes shows merge conflicts)
-  const git = safeExec("git status --porcelain=v1");
-  if (git && git.trim().length > 0) {
-    return `📌 Auto-collected Git status:\n\n${git}`;
+  // If no errors found, return null
+  if (startIndex === -1) return null;
+
+  // Take a clean block after the error line
+  const extracted = lines.slice(startIndex, startIndex + 60).join("\n");
+
+  // Remove useless "silly" lines
+  return extracted
+    .split("\n")
+    .filter((l) => !l.includes("silly"))
+    .slice(0, 60)
+    .join("\n")
+    .trim();
+}
+
+export function collectAutoError() {
+  const npmLogsDir = path.join(os.homedir(), ".npm", "_logs");
+  const latestNpmLog = getLatestFile(npmLogsDir, ".log");
+
+  if (latestNpmLog) {
+    const raw = fs.readFileSync(latestNpmLog, "utf-8");
+    const extracted = extractNpmError(raw);
+
+    if (extracted) {
+      return {
+        source: "npm" | "kubernetes" | "docker" | "git",
+        title: "Short readable error title",
+        file: "...optional",
+        extracted: "error lines",
+     }
+
+    }
   }
 
-  // 3) Kubernetes events (if cluster exists)
-  const events = safeExec(
-    "kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -n 25"
-  );
-  if (events) {
-    return `📌 Auto-collected Kubernetes events:\n\n${events}`;
-  }
-
-  // Nothing found
   return null;
 }

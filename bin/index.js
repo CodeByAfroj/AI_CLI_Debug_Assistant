@@ -5,7 +5,7 @@ import { loginCommand } from "../src/commands/login.js";
 import { logoutCommand } from "../src/commands/logout.js";
 import { whoamiCommand } from "../src/commands/whoami.js";
 import { analyzeCommand } from "../src/commands/analyze.js";
-import { scanCommand } from "../src/commands/scan.js";
+import { runCommand } from "../src/utils/run.js";
 
 
 const program = new Command();
@@ -40,17 +40,19 @@ program
   });
 
 program
-  .command("scan")
-  .description("Scan your system/project for recent errors and context")
-  .option("-p, --preview", "Preview collected data only (recommended)")
-  .option("-a, --analyze", "Send scan results to AI")
+  .command("run")
+  .description("Run a command and auto-capture errors for AI fixing")
+  .option("-c, --context", "Include project/system context")
+  .option("-s, --stack <stack>", "Force stack type")
   .option("-m, --model <model>", "OpenRouter model override")
-  .action((options) => {
-    scanCommand({
-      preview: options.preview,
-      analyze: options.analyze,
+  .argument("<cmd...>", "Command to run")
+  .action((cmd, options) => {
+    runCommand(cmd, {
+      context: options.context,
+      stack: options.stack,
       model: options.model,
     });
   });
+
 
 program.parse(process.argv);
